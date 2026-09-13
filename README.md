@@ -62,7 +62,7 @@ apk add curl && curl -fsSL https://raw.githubusercontent.com/maulvi/bsbf-resourc
   --uuid 60d210ef-7271-4dc9-9b93-01563608bf90
 ```
 
-The installer can be run again to change the server configuration or upgrade the solution.
+The installer can be run again to change the server configuration or upgrade the installed solution.
 
 After installation, verify the services and MPTCP endpoints:
 
@@ -86,13 +86,36 @@ ip route show table 1
 ss -lntup | grep 12345
 ```
 
-Uninstall:
+### OpenWrt uninstall
+
+To remove the BSBF client from OpenWrt, run:
 
 ```sh
 bsbf-bonding --uninstall
 ```
 
-> **Note:** uninstalling the BSBF package does not automatically restore changes previously made to the OpenWrt network configuration.
+If `bsbf-bonding` is unavailable, run the OpenWrt package removal directly:
+
+```sh
+apk del bsbf-bonding
+```
+
+If `xray-core` is reported as being kept because it is required by `bsbf-bonding`, remove BSBF first and then remove Xray if it is no longer needed:
+
+```sh
+apk del bsbf-bonding
+apk del xray-core
+```
+
+You can verify that BSBF has been removed with:
+
+```sh
+ps | grep -E 'bsbf|xray' | grep -v grep
+ip mptcp endpoint show
+nft list tables | grep bsbf
+```
+
+> **Important:** uninstalling BSBF does not automatically revert network configuration changes made during installation. Review your OpenWrt network configuration after uninstalling if the interfaces or routing were modified by the installer.
 
 If the device runs out of storage, build a firmware image using the [BondingShouldBeFree firmware selector](https://fs.bondingshouldbefree.org/).
 
