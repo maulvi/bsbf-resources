@@ -37,9 +37,9 @@ BSBF is therefore not conventional Ethernet bonding: it operates at the transpor
 Replace the server IPv4 address, server port, and UUID with the values created for your client:
 
 ```sh
-curl -fsSL cld.bondingshouldbefree.org | sudo sh -s -- \
-  --server-ipv4 25.0.0.1 \
-  --server-port 16384 \
+curl -fsSL https://raw.githubusercontent.com/maulvi/bsbf-resources/main/resources-client/bsbf-client-installer.sh | sudo sh -s -- \\
+  --server-ipv4 25.0.0.1 \\
+  --server-port 16384 \\
   --uuid 60d210ef-7271-4dc9-9b93-01563608bf90
 ```
 
@@ -53,16 +53,16 @@ sudo bsbf-bonding --uninstall
 
 ### OpenWrt 25.12+
 
-OpenWrt 25.12 uses `apk` for package management. Install BSBF with:
+OpenWrt 25.12 uses `apk` for package management. Install BSBF directly from this repository:
 
 ```sh
-apk add curl && curl -fsSL owrt.bondingshouldbefree.org | sh -s -- \
-  --server-ipv4 25.0.0.1 \
-  --server-port 16384 \
+apk add curl && curl -fsSL https://raw.githubusercontent.com/maulvi/bsbf-resources/main/resources-client/bsbf-client-openwrt-installer.sh | sh -s -- \\
+  --server-ipv4 25.0.0.1 \\
+  --server-port 16384 \\
   --uuid 60d210ef-7271-4dc9-9b93-01563608bf90
 ```
 
-The installer configures the client credentials and installs the required OpenWrt packages. It can be run again to change the server configuration or upgrade the solution.
+The installer can be run again to change the server configuration or upgrade the solution.
 
 After installation, verify the services and MPTCP endpoints:
 
@@ -86,8 +86,6 @@ ip route show table 1
 ss -lntup | grep 12345
 ```
 
-A healthy TPROXY configuration normally has a rule for the BSBF mark and a local default route in the corresponding policy-routing table.
-
 Uninstall:
 
 ```sh
@@ -98,14 +96,12 @@ bsbf-bonding --uninstall
 
 If the device runs out of storage, build a firmware image using the [BondingShouldBeFree firmware selector](https://fs.bondingshouldbefree.org/).
 
-For generated OpenWrt images, the interface with the largest numeric suffix (for example `lan5`) is selected as LAN. If no interface has a numeric suffix, the first detected LAN interface is used. Other detected interfaces are configured as WAN interfaces.
-
 ## Server Installation
 
-Install or upgrade the BSBF server:
+Install or upgrade the BSBF server directly from this repository:
 
 ```sh
-curl -fsSL srv.bondingshouldbefree.org | sudo sh
+curl -fsSL https://raw.githubusercontent.com/maulvi/bsbf-resources/main/resources-server/bsbf-server-installer.sh | sudo sh
 ```
 
 Add a client with a 50 Mbps download and upload limit:
@@ -130,17 +126,112 @@ sudo bsbf-remove-client 16384-16400
 sudo bsbf-remove-client 60d210ef-7271-4dc9-9b93-01563608bf90
 ```
 
-Uninstall the server:
+Uninstall the server directly from this repository:
 
 ```sh
-curl -fsSL https://github.com/bondingshouldbefree/bsbf-resources/raw/main/resources-server/bsbf-server-installer.sh \
-  | sudo sh -s -- --uninstall
+curl -fsSL https://raw.githubusercontent.com/maulvi/bsbf-resources/main/resources-server/bsbf-server-installer.sh | sudo sh -s -- --uninstall
 ```
 
-## Repository Layout
+## Direct Raw Resources
 
-- `resources-client/` — client-side scripts, MPTCP helper, Xray configuration, nftables configuration, and OpenWrt/Linux resources.
-- `resources-server/` — VPS/server installation, client management, MPTCP configuration, and rate-limiting resources.
+The installers and runtime resources are available directly from GitHub without requiring a separate download domain.
+
+### Linux Client Installer
+
+```text
+https://raw.githubusercontent.com/maulvi/bsbf-resources/main/resources-client/bsbf-client-installer.sh
+```
+
+### OpenWrt Client Installer
+
+```text
+https://raw.githubusercontent.com/maulvi/bsbf-resources/main/resources-client/bsbf-client-openwrt-installer.sh
+```
+
+### Server Installer
+
+```text
+https://raw.githubusercontent.com/maulvi/bsbf-resources/main/resources-server/bsbf-server-installer.sh
+```
+
+### OpenWrt BSBF Bonding Configuration
+
+```text
+https://raw.githubusercontent.com/maulvi/bsbf-resources/main/resources-client/bsbf_bonding.nft
+```
+
+### OpenWrt Xray Configuration
+
+```text
+https://raw.githubusercontent.com/maulvi/bsbf-resources/main/resources-client/xray.json
+```
+
+### MPTCP Manager
+
+```text
+https://raw.githubusercontent.com/maulvi/bsbf-resources/main/resources-client/bsbf-mptcp
+```
+
+### MPTCP Helper
+
+```text
+https://raw.githubusercontent.com/maulvi/bsbf-resources/main/resources-client/bsbf-mptcp-helper
+```
+
+## Architecture
+
+```text
+                    Internet
+                       │
+          ┌────────────┴────────────┐
+          │                         │
+       WAN 1                     WAN 2
+          │                         │
+          └──────────┬──────────────┘
+                     │
+                BSBF Client
+                  OpenWrt
+                     │
+                   MPTCP
+                     │
+              Encrypted Tunnel
+                     │
+                     ▼
+                BSBF VPS
+                     │
+              Internet Server
+                     │
+                  Internet
+```
+
+The OpenWrt client establishes the BSBF connection to the user's VPS.
+
+Multiple WAN connections are exposed to MPTCP as separate subflows. The BSBF server terminates the aggregated connection and provides Internet connectivity through the VPS.
+
+## Requirements
+
+### OpenWrt
+
+- OpenWrt 25.12 or newer
+- `apk` package manager
+- Linux kernel with MPTCP support
+- At least two Internet connections for bonding
+- Reachable BSBF VPS
+- Valid BSBF server port
+- Valid client UUID
+
+### Server
+
+- Linux server/VPS
+- Public IPv4 address
+- Required BSBF server port reachable from the Internet
+- MPTCP-capable Linux kernel
+
+## Security
+
+Do not publish client UUIDs or other private credentials in public repositories.
+
+The client UUID is used to identify the BSBF client when connecting to the BSBF server.
 
 ## Troubleshooting
 
