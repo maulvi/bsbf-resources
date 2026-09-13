@@ -4,12 +4,17 @@
 
 set -u
 
+BSBF_TABLE=1
+BSBF_MARK=0x1
+BSBF_MARK_MASK=0xff
+BSBF_RULE_PRIORITY=100
+BSBF_TPROXY_PORT=12345
+
 usage() {
 	echo "Usage: $0 --server-ipv4 <ADDR> --server-port <PORT> --uuid <UUID>"
 	exit 1
 }
 
-# Parse arguments.
 while [ $# -gt 0 ]; do
 	case "$1" in
 	--server-ipv4)
@@ -72,15 +77,16 @@ uci commit xray
 # Preserve the user's existing LAN/WAN topology. Only create/update the
 # BSBF-specific policy-routing entries required by the TPROXY mark.
 uci set network.bsbf_tproxy_rule=rule
-uci set network.bsbf_tproxy_rule.priority='100'
-uci set network.bsbf_tproxy_rule.lookup='1'
-uci set network.bsbf_tproxy_rule.mark='1'
+uci set network.bsbf_tproxy_rule.priority="$BSBF_RULE_PRIORITY"
+uci set network.bsbf_tproxy_rule.lookup="$BSBF_TABLE"
+uci set network.bsbf_tproxy_rule.mark="$BSBF_MARK"
+uci set network.bsbf_tproxy_rule.mask="$BSBF_MARK_MASK"
 
 uci set network.bsbf_tproxy_route=route
 uci set network.bsbf_tproxy_route.interface='loopback'
 uci set network.bsbf_tproxy_route.type='local'
 uci set network.bsbf_tproxy_route.target='0.0.0.0/0'
-uci set network.bsbf_tproxy_route.table='1'
+uci set network.bsbf_tproxy_route.table="$BSBF_TABLE"
 
 uci commit network
 
@@ -96,12 +102,17 @@ if ! bsbf-bonding --enable; then
 	exit 1
 fi
 
-# Reload networking so the BSBF fwmark-1 -> table-1 policy route becomes live.
+# Reload networking so the UCI policy-routing objects are applied.
 /etc/init.d/network reload
 
+# Reconcile the exact runtime objects needed by BSBF. This is intentionally
+# idempotent and does not modify the main routing table or WAN default routes.
+while ip rule del priority "$BSBF_RULE_PRIORITY" fwmark "$BSBF_MARK/$BSBF_MARK_MASK" lookup "$BSBF_TABLE" 2>/dev/null; do :; done
+ip route del local 0.0.0.0/0 dev lo table "$BSBF_TABLE" 2>/dev/null || true
+ip rule add priority "$BSBF_RULE_PRIORITY" fwmark "$BSBF_MARK/$BSBF_MARK_MASK" lookup "$BSBF_TABLE"
+ip route add local 0.0.0.0/0 dev lo table "$BSBF_TABLE"
+
 # Explicitly restart Xray after BSBF generated its final configuration.
-# This guarantees that /etc/config/xray=enabled and the generated config are
-# both active in the running system.
 /etc/init.d/xray restart
 
 # Validate the generated Xray configuration and listener.
@@ -116,10 +127,35 @@ if ! /usr/bin/xray run -test -c /etc/xray/config.json >/dev/null 2>&1; then
 	exit 1
 fi
 
-if ! ss -lntup 2>/dev/null | grep -q '127.0.0.1:12345'; then
-	echo "Installation failed: Xray is enabled but is not listening on 127.0.0.1:12345."
+if ! ss -lntup 2>/dev/null | grep -q "127.0.0.1:$BSBF_TPROXY_PORT"; then
+	echo "Installation failed: Xray is enabled but is not listening on 127.0.0.1:$BSBF_TPROXY_PORT."
 	echo "Run: /etc/init.d/xray status"
 	echo "Run: logread -e xray"
+	exit 1
+fi
+
+# Verify the live policy-routing state before declaring success.
+if ! ip rule show | grep -Eq "^$BSBF_RULE_PRIORITY:.*fwmark $BSBF_MARK/$BSBF_MARK_MASK.*lookup $BSBF_TABLE$"; then
+	echo "Installation failed: BSBF fwmark policy rule is missing."
+	echo "Run: ip rule"
+	exit 1
+fi
+
+if ! ip route show table "$BSBF_TABLE" | grep -Eq '^local 0.0.0.0/0 dev lo'; then
+	echo "Installation failed: BSBF local TPROXY route is missing from table $BSBF_TABLE."
+	echo "Run: ip route show table $BSBF_TABLE"
+	exit 1
+fi
+
+if ! ip mptcp endpoint show 2>/dev/null | grep -q 'subflow'; then
+	echo "Installation failed: no MPTCP subflow endpoint is configured."
+	echo "Run: ip mptcp endpoint show"
+	exit 1
+fi
+
+if ! nft list table ip bsbf_bonding >/dev/null 2>&1; then
+	echo "Installation failed: BSBF nftables table is missing."
+	echo "Run: nft list table ip bsbf_bonding"
 	exit 1
 fi
 
@@ -131,7 +167,9 @@ chmod 755 /usr/sbin/bsbf-bonding-openwrt-uninstall
 echo
 echo "BSBF OpenWrt installation complete."
 echo "Xray UCI: $(uci -q get xray.enabled.enabled)"
-echo "Xray listener: 127.0.0.1:12345"
+echo "Xray listener: 127.0.0.1:$BSBF_TPROXY_PORT"
+echo "BSBF policy: fwmark $BSBF_MARK/$BSBF_MARK_MASK -> table $BSBF_TABLE"
+echo "BSBF route: local 0.0.0.0/0 dev lo table $BSBF_TABLE"
 echo "MPTCP endpoints:"
 ip mptcp endpoint show 2>/dev/null || true
 echo "Uninstall with: bsbf-bonding-openwrt-uninstall"
