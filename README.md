@@ -16,7 +16,7 @@ Internet connection 2 ─┘
 
 The client establishes MPTCP subflows over its available WAN interfaces. The VPS terminates the aggregated connection and provides the remote Internet breakout.
 
-BSBF is therefore not conventional Ethernet bonding: it operates at the transport layer using MPTCP and can aggregate connections from different upstream networks.
+BSBF is not conventional Ethernet bonding. It operates at the transport layer using MPTCP and can aggregate connections from different upstream networks.
 
 ## Project Documentation
 
@@ -37,10 +37,7 @@ BSBF is therefore not conventional Ethernet bonding: it operates at the transpor
 Replace the server IPv4 address, server port, and UUID with the values created for your client:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/maulvi/bsbf-resources/main/resources-client/bsbf-client-installer.sh | sudo sh -s -- \\
-  --server-ipv4 25.0.0.1 \\
-  --server-port 16384 \\
-  --uuid 60d210ef-7271-4dc9-9b93-01563608bf90
+curl -fsSL https://raw.githubusercontent.com/maulvi/bsbf-resources/main/resources-client/bsbf-client-installer.sh | sudo sh -s -- --server-ipv4 25.0.0.1 --server-port 16384 --uuid 60d210ef-7271-4dc9-9b93-01563608bf90
 ```
 
 The installer can be run again to change the server configuration or upgrade the installed solution.
@@ -53,69 +50,110 @@ sudo bsbf-bonding --uninstall
 
 ### OpenWrt 25.12+
 
-OpenWrt 25.12 uses `apk` for package management. Install BSBF directly from this repository:
+OpenWrt 25.12 uses `apk` for package management. The OpenWrt client uses **Xray as part of the BSBF TPROXY path**; do not remove `xray-core` while BSBF is installed. The `bsbf-bonding` package pulls the required Xray dependency.
+
+Install BSBF directly from this repository:
 
 ```sh
-apk add curl && curl -fsSL https://raw.githubusercontent.com/maulvi/bsbf-resources/main/resources-client/bsbf-client-openwrt-installer.sh | sh -s -- \\
-  --server-ipv4 25.0.0.1 \\
-  --server-port 16384 \\
-  --uuid 60d210ef-7271-4dc9-9b93-01563608bf90
+apk add curl && curl -fsSL https://raw.githubusercontent.com/maulvi/bsbf-resources/main/resources-client/bsbf-client-openwrt-installer.sh | sh -s -- --server-ipv4 25.0.0.1 --server-port 16384 --uuid 60d210ef-7271-4dc9-9b93-01563608bf90
 ```
 
 The installer can be run again to change the server configuration or upgrade the installed solution.
 
-After installation, verify the services and MPTCP endpoints:
+#### What the OpenWrt installation configures
+
+The OpenWrt integration configures the following components:
+
+- `bsbf-bonding`
+- `bsbf-mptcp`
+- `bsbf-bonding-nft`
+- `xray-core`
+- Xray TPROXY listener on `127.0.0.1:12345`
+- nftables TPROXY rules in `ip bsbf_bonding`
+- packet mark `1` for intercepted traffic
+- policy routing from `fwmark 1` to routing table `1`
+- a local route in table `1` so TPROXY traffic is delivered to the local Xray listener
+- MPTCP endpoints for the available WAN interfaces
+
+The important traffic path is:
+
+```text
+LAN client
+   │
+   ▼
+nftables TPROXY
+   │ mark 1
+   ▼
+ip rule: fwmark 1 → table 1
+   │
+   ▼
+Xray 127.0.0.1:12345
+   │
+   ▼
+BSBF / MPTCP
+   ├── WAN 1
+   └── WAN 2
+   │
+   ▼
+BSBF VPS
+```
+
+Verify the installation:
 
 ```sh
-/etc/init.d/xray start
-/etc/init.d/bsbf-bonding-nft start
-/etc/init.d/bsbf-mptcp restart
-
 ss -lntup | grep 12345
 ip mptcp endpoint show
+ip rule
+ip route show table 1
 nft list table ip bsbf_bonding
 ```
 
-For a working TPROXY setup, Xray must be listening on `127.0.0.1:12345`, the BSBF nftables table must be loaded, and policy routing for the TPROXY mark must be installed by the OpenWrt integration.
+A healthy installation should show Xray listening on `127.0.0.1:12345`, MPTCP endpoints for the WAN interfaces, a policy rule for mark `1`, and a local route in table `1`.
 
-If `ip mptcp endpoint show` already contains endpoints but Internet traffic stops when BSBF is enabled, check the Xray listener and policy-routing state first:
+If `ip mptcp endpoint show` works but LAN clients cannot access the Internet while BSBF is enabled, check the complete TPROXY path rather than MPTCP alone:
 
 ```sh
+ss -lntup | grep 12345
 ip rule
 ip route show table 1
-ss -lntup | grep 12345
+nft list chain ip bsbf_bonding prerouting_mangle
+logread | grep -Ei 'xray|bsbf|mptcp'
 ```
 
 ### OpenWrt uninstall
 
-To remove the BSBF client from OpenWrt, run:
+Use the BSBF OpenWrt uninstaller so runtime state and the Xray dependency are cleaned up together:
 
 ```sh
-bsbf-bonding --uninstall
+bsbf-bonding-openwrt-uninstall
 ```
 
-If `bsbf-bonding` is unavailable, run the OpenWrt package removal directly:
+If the command is not available, run the repository uninstaller directly:
 
 ```sh
-apk del bsbf-bonding
+curl -fsSL https://raw.githubusercontent.com/maulvi/bsbf-resources/main/resources-client/bsbf-bonding-openwrt-uninstall.sh | sh
 ```
 
-If `xray-core` is reported as being kept because it is required by `bsbf-bonding`, remove BSBF first and then remove Xray if it is no longer needed:
+The OpenWrt uninstaller removes:
 
-```sh
-apk del bsbf-bonding
-apk del xray-core
-```
+- BSBF services and startup entries
+- Xray service and `xray-core`
+- the `bsbf_bonding` nftables table
+- BSBF MPTCP endpoints
+- BSBF TPROXY policy-routing rules
+- BSBF routing state
+- BSBF/Xray configuration and runtime files
 
-You can verify that BSBF has been removed with:
+It intentionally does **not** blindly delete unrelated WAN/LAN configuration. Review your network configuration if BSBF installation previously changed interface layout.
+
+Verify after uninstall:
 
 ```sh
 ps | grep -E 'bsbf|xray' | grep -v grep
 ip mptcp endpoint show
+ip rule
 nft list tables | grep bsbf
 ```
-
-> **Important:** uninstalling BSBF does not automatically revert network configuration changes made during installation. Review your OpenWrt network configuration after uninstalling if the interfaces or routing were modified by the installer.
 
 If the device runs out of storage, build a firmware image using the [BondingShouldBeFree firmware selector](https://fs.bondingshouldbefree.org/).
 
@@ -171,6 +209,12 @@ https://raw.githubusercontent.com/maulvi/bsbf-resources/main/resources-client/bs
 https://raw.githubusercontent.com/maulvi/bsbf-resources/main/resources-client/bsbf-client-openwrt-installer.sh
 ```
 
+### OpenWrt Uninstaller
+
+```text
+https://raw.githubusercontent.com/maulvi/bsbf-resources/main/resources-client/bsbf-bonding-openwrt-uninstall.sh
+```
+
 ### Server Installer
 
 ```text
@@ -215,6 +259,8 @@ https://raw.githubusercontent.com/maulvi/bsbf-resources/main/resources-client/bs
                 BSBF Client
                   OpenWrt
                      │
+               Xray TPROXY
+                     │
                    MPTCP
                      │
               Encrypted Tunnel
@@ -222,14 +268,10 @@ https://raw.githubusercontent.com/maulvi/bsbf-resources/main/resources-client/bs
                      ▼
                 BSBF VPS
                      │
-              Internet Server
-                     │
                   Internet
 ```
 
-The OpenWrt client establishes the BSBF connection to the user's VPS.
-
-Multiple WAN connections are exposed to MPTCP as separate subflows. The BSBF server terminates the aggregated connection and provides Internet connectivity through the VPS.
+The OpenWrt client establishes the BSBF connection to the user's VPS. Xray is the transparent-proxy component used by the OpenWrt BSBF integration; MPTCP provides the multi-WAN transport aggregation.
 
 ## Requirements
 
@@ -238,6 +280,8 @@ Multiple WAN connections are exposed to MPTCP as separate subflows. The BSBF ser
 - OpenWrt 25.12 or newer
 - `apk` package manager
 - Linux kernel with MPTCP support
+- `kmod-nft-tproxy`
+- `xray-core` (installed as a BSBF dependency)
 - At least two Internet connections for bonding
 - Reachable BSBF VPS
 - Valid BSBF server port
@@ -258,39 +302,49 @@ The client UUID is used to identify the BSBF client when connecting to the BSBF 
 
 ## Troubleshooting
 
-### MPTCP endpoints are present but traffic is not passing
+### Xray is not listening on port 12345
 
 Check:
 
 ```sh
-ip mptcp endpoint show
-ip rule
-ip route show table 1
-ss -lntup | grep 12345
-nft list table ip bsbf_bonding
-```
-
-The presence of MPTCP endpoints alone does not establish a working TPROXY path. Traffic redirected by nftables must reach the local Xray TPROXY listener and the packet mark must have a matching policy-routing rule.
-
-### Xray starts and immediately exits
-
-Validate the configuration directly:
-
-```sh
-xray run -test -config /etc/xray/config.json
-```
-
-Then inspect the OpenWrt service configuration and logs:
-
-```sh
-/etc/init.d/xray start
 /etc/init.d/xray status
+xray run -test -config /etc/xray/config.json
 logread | grep -Ei 'xray|procd'
 ```
 
+If the configuration is valid but Xray is stopped:
+
+```sh
+/etc/init.d/xray restart
+```
+
+### MPTCP endpoints are present but traffic is not passing
+
+Check the entire TPROXY path:
+
+```sh
+ss -lntup | grep 12345
+ip mptcp endpoint show
+ip rule
+ip route show table 1
+nft list table ip bsbf_bonding
+```
+
+The presence of MPTCP endpoints alone does not establish a working TPROXY path. Intercepted traffic must be marked, routed through table `1`, delivered to the local Xray TPROXY listener, and then sent through the BSBF/MPTCP transport.
+
+### `ip rule` does not contain the BSBF mark rule
+
+The OpenWrt BSBF integration requires a policy rule equivalent to:
+
+```text
+fwmark 1 lookup 1
+```
+
+and table `1` should contain the local route used by the TPROXY integration. If these are missing, reinstall or re-enable BSBF rather than manually adding unrelated routes.
+
 ### MPTCP helper reports `too many addresses or duplicate one: -17`
 
-`-17` is `EEXIST`: the endpoint already exists. The MPTCP helper is intended to be idempotent and should not fail merely because the same interface endpoint is already registered.
+`-17` is `EEXIST`: the endpoint already exists. The endpoint should not be added twice.
 
 ## License
 
