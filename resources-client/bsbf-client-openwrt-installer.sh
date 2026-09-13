@@ -48,3 +48,12 @@ apk add kmod-ifb kmod-nft-tproxy
 apk add bsbf-bonding
 
 [ $? -ne 0 ] && echo "Installation failed. Try building an image from https://fs.bondingshouldbefree.org/ instead." && exit 1
+
+# Install an independent OpenWrt uninstaller. Keep it outside the package-owned
+# bsbf-bonding files so it remains available while the package is being removed.
+curl -fsSL https://raw.githubusercontent.com/maulvi/bsbf-resources/main/resources-client/bsbf-bonding-openwrt-uninstall.sh \
+	-o /usr/sbin/bsbf-bonding-openwrt-uninstall
+chmod 755 /usr/sbin/bsbf-bonding-openwrt-uninstall
+
+echo "BSBF OpenWrt installation complete."
+echo "Uninstall with: bsbf-bonding-openwrt-uninstall"
