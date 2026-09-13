@@ -23,10 +23,8 @@ log "Removing BSBF nftables rules."
 nft destroy table ip bsbf_bonding 2>/dev/null || true
 
 log "Flushing BSBF MPTCP endpoints."
-ip mptcp endpoint flush 2>/dev/null || ip mptcp endpoint flush all 2>/dev/null || true
+ip mptcp endpoint flush 2>/dev/null || ip mp e f 2>/dev/null || true
 
-# Remove policy-routing rules that explicitly use the BSBF TPROXY mark.
-# Do not flush the complete rule table: OpenWrt may have unrelated rules.
 log "Removing BSBF policy-routing rules."
 while ip rule show | grep -Eq 'fwmark (0x)?0*1([ /].*)?'; do
 	line=$(ip rule show | grep -E 'fwmark (0x)?0*1([ /].*)?' | head -n 1)
@@ -35,13 +33,11 @@ while ip rule show | grep -Eq 'fwmark (0x)?0*1([ /].*)?'; do
 	ip rule del pref "$pref" 2>/dev/null || break
 done
 
-# Remove only routing tables that are commonly created for the BSBF TPROXY
-# mark. Table 1 is handled explicitly because the previous integration used it.
+# Flush routing tables used by the previous BSBF TPROXY integration.
 for table in 1 100 101 102; do
 	ip route flush table "$table" 2>/dev/null || true
 done
 
-# Remove BSBF runtime state.
 rm -f /run/bsbf-mptcp-* 2>/dev/null || true
 
 log "Removing BSBF package."
@@ -49,20 +45,20 @@ if apk info -e bsbf-bonding >/dev/null 2>&1; then
 	apk del bsbf-bonding || true
 fi
 
-# Remove BSBF-owned configuration and init scripts left behind by older builds.
-rm -rf /etc/bsbf /usr/share/bsbf 2>/dev/null || true
-rm -f /etc/init.d/bsbf-mptcp /etc/init.d/bsbf-bonding-nft 2>/dev/null || true
-rm -f /usr/sbin/bsbf-mptcp /usr/sbin/bsbf-mptcp-helper 2>/dev/null || true
-
-# Xray may be used independently by the user, so do not blindly uninstall
-# xray-core. Remove it only when apk reports it as an orphaned dependency.
+log "Removing Xray package."
 if apk info -e xray-core >/dev/null 2>&1; then
-	log "xray-core is still installed; leaving it untouched."
+	apk del xray-core || true
 fi
 
+log "Removing BSBF/Xray configuration and init scripts."
+rm -rf /etc/bsbf /etc/xray /usr/share/bsbf 2>/dev/null || true
+rm -f /etc/config/xray 2>/dev/null || true
+rm -f /etc/init.d/bsbf-mptcp /etc/init.d/bsbf-bonding-nft /etc/init.d/xray 2>/dev/null || true
+rm -f /usr/sbin/bsbf-mptcp /usr/sbin/bsbf-mptcp-helper /usr/sbin/bsbf-bonding 2>/dev/null || true
 rm -f /usr/sbin/bsbf-bonding-openwrt-uninstall 2>/dev/null || true
 
-log "BSBF uninstall complete."
+sync
+log "BSBF and Xray uninstall complete."
 log "Verify with: ps | grep -E 'bsbf|xray' | grep -v grep"
 log "Verify with: ip mptcp endpoint show"
 log "Verify with: nft list tables | grep bsbf"
