@@ -9,7 +9,6 @@ usage() {
 
 [ $# -ne 2 ] && usage
 
-# Extract MPTCP endpoint ID(s) from interface.
 extract_id() {
 	ID=$(ip mp e | awk -v dev="$1" '$NF == dev {for(i=1;i<=NF;i++) if($i=="id") print $(i+1)}')
 	[ -z "$ID" ] && exit 1
@@ -17,23 +16,26 @@ extract_id() {
 
 case "$1" in
 	add)
-		IP=$(ip -4 -o a s dev "$2" | awk '{print $4}' | cut -d/ -f1)
-		[ -z "$IP" ] && exit 1
+		IPS=$(ip -4 -o addr show dev "$2" | awk '{print $4}' | cut -d/ -f1)
+		[ -z "$IPS" ] && exit 1
 
-		for IP in $IP; do
-			ip mp e a "$IP" subflow dev "$2"
+		for IP in $IPS; do
+			# Do not add an endpoint that already exists. This makes the helper
+			# safe to call repeatedly from bsbf-mptcp and during restarts.
+			if ip mp e | awk -v ip="$IP" -v dev="$2" '$1 == ip && $0 ~ "dev " dev "([[:space:]]|$)" {found=1} END {exit !found}'; then
+				continue
+			fi
+			ip mp e a "$IP" subflow dev "$2" || exit 1
 		done
 		;;
 	backup|nobackup)
 		extract_id "$2"
-
 		for ID in $ID; do
 			ip mp e c i "$ID" "$1"
 		done
 		;;
 	remove)
 		extract_id "$2"
-
 		for ID in $ID; do
 			ip mp e d i "$ID"
 		done
