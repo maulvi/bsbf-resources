@@ -74,8 +74,8 @@ ucode -l fs \
     -e '
         let j = json(fs.readfile(infile));
         j.outbounds[0].settings.id = id;
-        j.outbounds[1].settings.redirect = \`\${addr}:\${port}\`;
-        fs.writefile(outfile, sprintf("%.2J\\n", j));
+        j.outbounds[1].settings.redirect = sprintf("%s:%s", addr, port);
+        fs.writefile(outfile, sprintf("%.2J\n", j));
     '
 chmod 600 /etc/xray/config.json
 
