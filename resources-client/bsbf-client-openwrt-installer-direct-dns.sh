@@ -9,6 +9,7 @@ set -eu
 SERVER_IPV4="${1:-}"
 SERVER_PORT="${2:-}"
 UUID="${3:-}"
+SERVER_NAME="${4:-default}"
 
 if [ -z "$SERVER_IPV4" ] || [ -z "$SERVER_PORT" ] || [ -z "$UUID" ]; then
     echo
@@ -44,13 +45,13 @@ echo "[2/8] Stopping existing services..."
 nft destroy table bsbf_bonding 2>/dev/null || true
 
 echo "[3/8] Configuring BSBF server..."
+uclient-fetch -qO /usr/bin/bsbf-server https://raw.githubusercontent.com/maulvi/bsbf-resources/main/resources-client/bsbf-server
+chmod 700 /usr/bin/bsbf-server
 mkdir -p /etc/bsbf
-cat > /etc/bsbf/bsbf-bonding.conf <<CONFIG
-server_ipv4="$SERVER_IPV4"
-server_port="$SERVER_PORT"
-uuid="$UUID"
-CONFIG
-chmod 600 /etc/bsbf/bsbf-bonding.conf
+bsbf-server add "$SERVER_NAME" "$SERVER_IPV4" "$SERVER_PORT" "$UUID"
+echo "$SERVER_NAME" > /etc/bsbf/active-server
+chmod 600 /etc/bsbf/active-server
+bsbf-server current
 
 echo "[4/8] Configuring Xray..."
 mkdir -p /etc/xray
