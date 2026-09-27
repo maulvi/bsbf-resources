@@ -93,7 +93,8 @@ cmd_add() {
     [ -n "$id" ] || die "UUID is required"
 
     ensure_files
-    if find_server "$name" >/dev/null 2>&1; then
+    line="$(find_server "$name")"
+    if [ -n "$line" ]; then
         awk -F '|' -v n="$name" -v a="$addr" -v p="$port" -v i="$id"             'BEGIN{OFS="|"} $1 == n {$2=a;$3=p;$4=i} {print}' "$CONFIG" > "$CONFIG.tmp"
         mv "$CONFIG.tmp" "$CONFIG"
         chmod 600 "$CONFIG"
@@ -151,8 +152,9 @@ Usage:
   bsbf-server remove <name>
 
 Examples:
-  bsbf-server add sg 192.0.2.10 6701 00000000-0000-0000-0000-000000000000
-  bsbf-server use sg
+  bsbf-server add malaysia 87.76.160.204 16384 e7acba73-df53-40db-9400-65b2aa6304ff
+  bsbf-server add "contoh namaaa" 192.0.2.10 6701 00000000-0000-0000-0000-000000000000
+  bsbf-server use malaysia
 EOF
 }
 
