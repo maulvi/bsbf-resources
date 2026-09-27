@@ -124,7 +124,7 @@ nft -f "$BSBF_NFT"
 /etc/init.d/bsbf-mptcp restart 2>/dev/null || true
 
 killall xray 2>/dev/null || true
-/etc/init.d/xray restart
+/etc/init.d/xray start
 sleep 3
 
 echo "[8/8] Validating installation..."
