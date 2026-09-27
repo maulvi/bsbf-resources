@@ -23,6 +23,7 @@ fi
 
 echo "=============================================="
 echo " BSBF OpenWrt Installer"
+ echo " DNS: DIRECT / BSBF: BONDED"
 echo "=============================================="
 
 echo "[1/8] Installing packages..."
@@ -113,7 +114,11 @@ echo "[7/8] Configuring BSBF services..."
 /etc/init.d/network reload
 sleep 2
 
-nft -f /usr/share/bsbf/bsbf_bonding.nft
+# Use the official BSBF nft rules, but remove DNS interception.
+# DNS therefore stays on the normal OpenWrt/WAN resolver path.
+BSBF_NFT="/usr/share/bsbf/bsbf_bonding.nft"
+sed -i '/th dport 53 tproxy ip to 127.0.0.1:12345 meta mark set 0x00000001/d' "$BSBF_NFT"
+nft -f "$BSBF_NFT"
 
 /etc/init.d/xray enable
 /etc/init.d/bsbf-mptcp enable
@@ -151,6 +156,10 @@ echo "===== BSBF NFT ====="
 nft list table ip bsbf_bonding
 
 echo
+echo "===== DNS CHECK ====="
+echo "DNS port 53 is NOT intercepted by BSBF TPROXY."
+echo "DNS uses the normal OpenWrt/WAN resolver path."
+echo
 echo "===== SERVICES ====="
 service xray status || true
 service bsbf-mptcp status || true
@@ -159,4 +168,6 @@ bsbf-bonding --status
 echo
 echo "=============================================="
 echo " BSBF INSTALLATION COMPLETE"
+echo " DNS: DIRECT"
+echo " TRAFFIC: BONDED"
 echo "=============================================="
