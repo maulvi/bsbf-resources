@@ -13,7 +13,7 @@ UUID="${3:-}"
 if [ -z "$SERVER_IPV4" ] || [ -z "$SERVER_PORT" ] || [ -z "$UUID" ]; then
     echo
     echo "Usage:"
-    echo "  $0 <SERVER_IPV4> <SERVER_PORT> <UUID>"
+    echo "  $0 192.0.2.10 6701 00000000-0000-0000-0000-000000000000"
     echo
     echo "Example:"
     echo "  $0 103.179.44.36 6701 286abec0-9ed9-4401-887a-4da334b0f23f"
@@ -74,8 +74,8 @@ ucode -l fs \
     -e '
         let j = json(fs.readfile(infile));
         j.outbounds[0].settings.id = id;
-        j.outbounds[1].settings.redirect = \`\${addr}:\${port}\`;
-        fs.writefile(outfile, sprintf("%.2J\\n", j));
+        j.outbounds[1].settings.redirect = sprintf("%s:%s", addr, port);
+        fs.writefile(outfile, sprintf("%.2J\n", j));
     '
 chmod 600 /etc/xray/config.json
 
