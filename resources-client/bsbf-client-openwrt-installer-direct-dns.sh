@@ -34,7 +34,9 @@ apk add \
     bsbf-rate-limiting \
     kmod-nf-tproxy \
     kmod-nft-tproxy \
-    xray-core
+    xray-core \
+    ss \
+    kitty-terminfo
 
 echo "[2/8] Stopping existing services..."
 /etc/init.d/xray stop 2>/dev/null || true
