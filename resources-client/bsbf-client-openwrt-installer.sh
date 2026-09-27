@@ -36,6 +36,7 @@ apk add \
     bsbf-rate-limiting \
     kmod-nf-tproxy \
     kmod-nft-tproxy \
+    kmod-tcp-bbr \
     xray-core \
     ss \
     kitty-terminfo
