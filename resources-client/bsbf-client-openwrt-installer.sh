@@ -10,12 +10,11 @@ SERVER_IPV4="${1:-}"
 SERVER_PORT="${2:-}"
 UUID="${3:-}"
 SERVER_NAME="${4:-default}"
-SERVER_NAME="${4:-default}"
 
 if [ -z "$SERVER_IPV4" ] || [ -z "$SERVER_PORT" ] || [ -z "$UUID" ]; then
     echo
     echo "Usage:"
-    echo "  $0 192.0.2.10 6701 00000000-0000-0000-0000-000000000000 [name]"
+    echo "  $0 192.0.2.10 6701 00000000-0000-0000-0000-000000000000 server-1"
     echo
     echo "Example:"
     echo "  $0 192.0.2.10 6701 00000000-0000-0000-0000-000000000000 [name]"
