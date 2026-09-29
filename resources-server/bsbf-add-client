@@ -82,7 +82,7 @@ if [ -z "$PORT" ]; then
 fi
 
 # Add client to server.
-PORT=\${PORT:-$CLIENT_ID}
+PORT=${PORT:-$CLIENT_ID}
 INBOUND_MARK=$CLIENT_ID
 OUTBOUND_MARK=$((CLIENT_ID + 16384))
 
