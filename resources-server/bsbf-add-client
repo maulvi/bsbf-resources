@@ -22,7 +22,7 @@ while [ $# -gt 0 ]; do
 		OVERWRITE="--overwrite"
 		;;
 	*[!0-9]*)
-		echo "ERROR: Invalid port: $1 (must be 1-49151)" >&2
+		echo "ERROR: Invalid port: $1 (must be 1-32767)" >&2
 		exit 1
 		;;
 	*)
@@ -44,8 +44,8 @@ case "$SPEED" in
 esac
 
 if [ -n "$PORT" ]; then
-	[ "$PORT" -ge 1 ] && [ "$PORT" -le 49151 ] || {
-		echo "ERROR: Invalid port: $PORT (must be 1-49151)" >&2
+	[ "$PORT" -ge 1 ] && [ "$PORT" -le 32767 ] || {
+		echo "ERROR: Invalid port: $PORT (must be 1-32767)" >&2
 		exit 1
 	}
 fi
