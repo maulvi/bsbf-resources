@@ -20,7 +20,6 @@ while [ "$#" -gt 0 ]; do
 done
 
 [ "$(id -u)" -eq 0 ] || die "Run as root"
-grep -q '/edge/' /etc/alpine-release 2>/dev/null || die "Alpine Edge is required"
 
 if [ "$UNINSTALL" = 1 ]; then
     rc-service bsbf-mptcp-configuration stop 2>/dev/null || true
