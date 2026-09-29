@@ -129,6 +129,8 @@ JSON
 name="$port-$uuid-$speed"
 bsbf-register-xray "$name"
 rc-service xray-bsbf-$name start
+iface=$(ip route show default | awk 'NR==1 {for(i=1;i<=NF;i++) if($i=="dev") print $(i+1)}')
+[ -z "$iface" ] || [ "$speed" -eq 0 ] || bsbf-rate-limiting "$iface" >/dev/null 2>&1 || true
 echo "$port $uuid"
 EOF
 chmod +x /usr/local/sbin/bsbf-add-client
@@ -157,10 +159,35 @@ for input in "$@"; do
         rc-service xray-bsbf-"$name" stop 2>/dev/null || true
         rc-update del xray-bsbf-"$name" default 2>/dev/null || true
         rm -f "$file" /etc/init.d/xray-bsbf-"$name"
+        iface=$(ip route show default | awk 'NR==1 {for(i=1;i<=NF;i++) if($i=="dev") print $(i+1)}')
+        [ -z "$iface" ] || bsbf-rate-limiting "$iface" >/dev/null 2>&1 || true
     done
 done
 EOF
 chmod +x /usr/local/sbin/bsbf-remove-client
+
+
+cat > /usr/local/sbin/bsbf-rate-limiting <<'EOF'
+#!/bin/sh
+set -eu
+[ "$#" -eq 1 ] || exit 1
+iface="$1"
+tc qdisc replace dev "$iface" root handle 1:0 htb
+for file in /usr/local/etc/xray-bsbf-bonding/[0-9]*-*.json; do
+    [ -e "$file" ] || continue
+    f=$(basename "$file" .json)
+    id=$(echo "$f" | cut -d- -f1)
+    speed=$(echo "$f" | awk -F- '{print $NF}')
+    [ "$speed" -gt 0 ] || continue
+    inhex=$(printf '%x' "$id")
+    outhex=$(printf '%x' "$((id + 16384))")
+    tc class add dev "$iface" parent 1:0 classid 1:$inhex htb rate "$speed"mbit 2>/dev/null || true
+    tc class add dev "$iface" parent 1:0 classid 1:$outhex htb rate "$speed"mbit 2>/dev/null || true
+    tc filter add dev "$iface" parent 1:0 handle 0x$inhex fw classid 1:$inhex 2>/dev/null || true
+    tc filter add dev "$iface" parent 1:0 handle 0x$outhex fw classid 1:$outhex 2>/dev/null || true
+done
+EOF
+chmod +x /usr/local/sbin/bsbf-rate-limiting
 
 echo "[4/6] Configuring MPTCP OpenRC service..."
 cat > /etc/init.d/bsbf-mptcp-configuration <<'EOF'
