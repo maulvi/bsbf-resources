@@ -54,7 +54,7 @@ update-ca-certificates
 
 echo "[3/6] Checking MPTCP..."
 ip mptcp limits show >/dev/null 2>&1 || die "Kernel does not expose MPTCP support"
-mkdir -p "$XRAY_DIR"
+mkdir -p "$XRAY_DIR" /usr/local/sbin
 curl -fsSL https://raw.githubusercontent.com/bondingshouldbefree/bsbf-resources/refs/heads/main/resources-server/core-config.json -o "$XRAY_DIR/core-config.json"
 chmod 600 "$XRAY_DIR/core-config.json"
 
