@@ -70,19 +70,19 @@ else
 	done
 fi
 
-# When client limit is reached, exit if overwrite argument is not given. Use
-# greater than or equals to ensure the client limit excess is detected. Then,
-# empty the next slot and use that for the client.
-if [ $CLIENT_ID -ge $((BASE_CLIENT_ID + CLIENT_LIMIT)) ]; then
-	[ -z "$OVERWRITE" ] && exit 1
-	bsbf-remove-client $BASE_CLIENT_ID
-	CLIENT_ID=$BASE_CLIENT_ID
+# Enforce the client limit only for automatically allocated client IDs.
+if [ -z "$PORT" ]; then
+	if [ $CLIENT_ID -ge $((BASE_CLIENT_ID + CLIENT_LIMIT)) ]; then
+		[ -z "$OVERWRITE" ] && exit 1
+		bsbf-remove-client $BASE_CLIENT_ID
+		CLIENT_ID=$BASE_CLIENT_ID
+	fi
+	# Empty the next slot if overwrite argument is given.
+	[ -n "$OVERWRITE" ] && bsbf-remove-client $((CLIENT_ID + 1))
 fi
-# Empty the next slot if overwrite argument is given.
-[ -n "$OVERWRITE" ] && [ -z "$PORT" ] && bsbf-remove-client $((CLIENT_ID + 1))
 
 # Add client to server.
-PORT=${PORT:-$CLIENT_ID}
+PORT=\${PORT:-$CLIENT_ID}
 INBOUND_MARK=$CLIENT_ID
 OUTBOUND_MARK=$((CLIENT_ID + 16384))
 
