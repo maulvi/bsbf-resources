@@ -141,8 +141,8 @@ if [ -n "$port" ]; then
     case "$port" in
         ''|*[!0-9]*) echo "ERROR: Invalid port: $port" >&2; exit 1 ;;
     esac
-    [ "$port" -ge 1 ] && [ "$port" -le 49151 ] || {
-        echo "ERROR: Invalid port: $port (must be 1-49151)" >&2
+    [ "$port" -ge 1 ] && [ "$port" -le 32767 ] || {
+        echo "ERROR: Invalid port: $port (must be 1-32767)" >&2
         exit 1
     }
     find "$XRAY_DIR" -maxdepth 1 -type f -name "$port-*.json" -print -quit | grep -q . && {
