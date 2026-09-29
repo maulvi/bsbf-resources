@@ -121,36 +121,36 @@ cat > "$LOCAL_SBIN/bsbf-add-client" <<EOF
 set -eu
 XRAY_DIR=$XRAY_DIR
 LIMIT=$LIMIT
-speed="$1"
+speed="\$1"
 base=16384
-uuid=$(xray uuid)
-id=$base
-while find "$XRAY_DIR" -maxdepth 1 -name "$id-*.json" -print -quit | grep -q .; do id=$((id + 1)); done
-[ "$id" -lt $((base + LIMIT)) ] || { echo "Client limit reached" >&2; exit 1; }
-port="$id"
-outmark=$((id + 16384))
-file="$XRAY_DIR/$port-$uuid-$speed.json"
-cat > "$file" <<JSON
+uuid=\$(xray uuid)
+id=\$base
+while find "\$XRAY_DIR" -maxdepth 1 -name "\$id-*.json" -print -quit | grep -q .; do id=\$((id + 1)); done
+[ "\$id" -lt \$((base + LIMIT)) ] || { echo "Client limit reached" >&2; exit 1; }
+port="\$id"
+outmark=\$((id + 16384))
+file="\$XRAY_DIR/\$port-\$uuid-\$speed.json"
+cat > "\$file" <<JSON
 {
   "inbounds": [{
     "listen": "0.0.0.0",
-    "port": $port",
+    "port": \$port,
     "protocol": "vless",
-    "settings": {"clients": [{"id": "$uuid"}], "decryption": "none"},
-    "streamSettings": {"sockopt": {"mark": $id, "tcpMptcp": true}}
+    "settings": {"clients": [{"id": "\$uuid"}], "decryption": "none"},
+    "streamSettings": {"sockopt": {"mark": \$id, "tcpMptcp": true}}
   }],
   "outbounds": [{
     "protocol": "freedom",
-    "streamSettings": {"sockopt": {"mark": $outmark}}
+    "streamSettings": {"sockopt": {"mark": \$outmark}}
   }]
 }
 JSON
-name="$port-$uuid-$speed"
-bsbf-register-xray "$name"
-rc-service xray-bsbf-"$name" start
-iface=$(ip route show default | awk 'NR==1 {for(i=1;i<=NF;i++) if($i=="dev") print $(i+1)}')
-[ -z "$iface" ] || [ "$speed" -eq 0 ] || bsbf-rate-limiting "$iface" >/dev/null 2>&1 || true
-echo "$port $uuid"
+name="\$port-\$uuid-\$speed"
+bsbf-register-xray "\$name"
+rc-service xray-bsbf-"\$name" start
+iface=\$(ip route show default | awk 'NR==1 {for(i=1;i<=NF;i++) if($i=="dev") print $(i+1)}')
+[ -z "\$iface" ] || [ "\$speed" -eq 0 ] || bsbf-rate-limiting "\$iface" >/dev/null 2>&1 || true
+echo "\$port \$uuid"
 EOF
 chmod +x "$LOCAL_SBIN/bsbf-add-client"
 
