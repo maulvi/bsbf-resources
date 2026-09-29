@@ -49,8 +49,6 @@ echo "[3/8] Configuring BSBF server..."
 uclient-fetch -qO /usr/bin/bsbf-server https://raw.githubusercontent.com/maulvi/bsbf-resources/main/resources-client/bsbf-server
 chmod 700 /usr/bin/bsbf-server
 
-chmod 700 /usr/bin/bsbf-server
-
 mkdir -p /etc/bsbf
 cat > /etc/bsbf/bsbf-bonding.conf <<CONFIG
 server_ipv4="$SERVER_IPV4"
