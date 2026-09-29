@@ -3,6 +3,7 @@
 set -eu
 
 XRAY_DIR=/usr/local/etc/xray-bsbf-bonding
+LOCAL_SBIN=/usr/local/sbin
 LIMIT=16384
 UNINSTALL=0
 
@@ -32,9 +33,9 @@ if [ "$UNINSTALL" = 1 ]; then
     done
     rc-update del bsbf-mptcp-configuration default 2>/dev/null || true
     rm -f /etc/init.d/bsbf-mptcp-configuration
-    rm -f /usr/local/sbin/bsbf-add-client /usr/local/sbin/bsbf-list-client
-    rm -f /usr/local/sbin/bsbf-remove-client /usr/local/sbin/bsbf-rate-limiting
-    rm -f /usr/local/sbin/bsbf-xray-client /usr/local/sbin/bsbf-register-xray
+    rm -f "$LOCAL_SBIN"/bsbf-add-client "$LOCAL_SBIN"/bsbf-list-client
+    rm -f "$LOCAL_SBIN"/bsbf-remove-client "$LOCAL_SBIN"/bsbf-rate-limiting
+    rm -f "$LOCAL_SBIN"/bsbf-xray-client "$LOCAL_SBIN"/bsbf-register-xray
     rm -rf "$XRAY_DIR"
     echo "BSBF Alpine server uninstalled."
     exit 0
@@ -52,13 +53,22 @@ apk update
 apk add ca-certificates curl findutils iproute2 iproute2-tc xray
 update-ca-certificates
 
-echo "[3/6] Checking MPTCP..."
+echo "[3/6] Checking Alpine runtime layout..."
+command -v ip >/dev/null 2>&1 || die "ip command is unavailable"
+command -v xray >/dev/null 2>&1 || die "xray command is unavailable"
+command -v start-stop-daemon >/dev/null 2>&1 || die "start-stop-daemon is unavailable"
+command -v rc-service >/dev/null 2>&1 || die "OpenRC rc-service is unavailable"
+command -v rc-update >/dev/null 2>&1 || die "OpenRC rc-update is unavailable"
 ip mptcp limits show >/dev/null 2>&1 || die "Kernel does not expose MPTCP support"
-mkdir -p "$XRAY_DIR" /usr/local/sbin
+mkdir -p "$XRAY_DIR" "$LOCAL_SBIN"
+[ -d "$LOCAL_SBIN" ] && [ -w "$LOCAL_SBIN" ] || die "Cannot write Alpine local admin directory: $LOCAL_SBIN"
+XRAY_BIN=$(command -v xray)
+START_STOP_DAEMON=$(command -v start-stop-daemon)
+export XRAY_BIN START_STOP_DAEMON
 curl -fsSL https://raw.githubusercontent.com/bondingshouldbefree/bsbf-resources/refs/heads/main/resources-server/core-config.json -o "$XRAY_DIR/core-config.json"
 chmod 600 "$XRAY_DIR/core-config.json"
 
-cat > /usr/local/sbin/bsbf-xray-client <<'EOF'
+cat > $LOCAL_SBIN/bsbf-xray-client <<'EOF'
 #!/bin/sh
 set -eu
 action="$1"
@@ -68,7 +78,7 @@ pid=/run/bsbf-xray-$name.pid
 case "$action" in
 start)
     if [ -f "$pid" ] && kill -0 "$(cat "$pid")" 2>/dev/null; then exit 0; fi
-    start-stop-daemon --start --background --make-pidfile --pidfile "$pid"         --exec /usr/bin/xray -- run -config "$base/core-config.json" -config "$base/$name.json"
+    "$START_STOP_DAEMON" --start --background --make-pidfile --pidfile "$pid"         --exec "$XRAY_BIN" -- run -config "$base/core-config.json" -config "$base/$name.json"
     ;;
 stop)
     [ -f "$pid" ] && kill "$(cat "$pid")" 2>/dev/null || true
@@ -76,18 +86,18 @@ stop)
     ;;
 esac
 EOF
-chmod +x /usr/local/sbin/bsbf-xray-client
+chmod +x $LOCAL_SBIN/bsbf-xray-client
 
-cat > /usr/local/sbin/bsbf-register-xray <<'EOF'
+cat > $LOCAL_SBIN/bsbf-register-xray <<'EOF'
 #!/bin/sh
 set -eu
 name="$1"
 svc=/etc/init.d/xray-bsbf-$name
 cat > "$svc" <<EORC
 #!/sbin/openrc-run
-command="/usr/local/sbin/bsbf-xray-client"
+command="$LOCAL_SBIN/bsbf-xray-client"
 command_args="start $name"
-command_stop="/usr/local/sbin/bsbf-xray-client"
+command_stop="$LOCAL_SBIN/bsbf-xray-client"
 command_stop_args="stop $name"
 pidfile="/run/bsbf-xray-$name.pid"
 depend() { need net; }
@@ -95,9 +105,9 @@ EORC
 chmod +x "$svc"
 rc-update add xray-bsbf-$name default >/dev/null 2>&1 || true
 EOF
-chmod +x /usr/local/sbin/bsbf-register-xray
+chmod +x $LOCAL_SBIN/bsbf-register-xray
 
-cat > /usr/local/sbin/bsbf-add-client <<EOF
+cat > $LOCAL_SBIN/bsbf-add-client <<EOF
 #!/bin/sh
 set -eu
 speed="$1"
@@ -132,9 +142,9 @@ iface=$(ip route show default | awk 'NR==1 {for(i=1;i<=NF;i++) if($i=="dev") pri
 [ -z "$iface" ] || [ "$speed" -eq 0 ] || bsbf-rate-limiting "$iface" >/dev/null 2>&1 || true
 echo "$port $uuid"
 EOF
-chmod +x /usr/local/sbin/bsbf-add-client
+chmod +x $LOCAL_SBIN/bsbf-add-client
 
-cat > /usr/local/sbin/bsbf-list-client <<'EOF'
+cat > $LOCAL_SBIN/bsbf-list-client <<'EOF'
 #!/bin/sh
 for file in /usr/local/etc/xray-bsbf-bonding/[0-9]*-*.json; do
     [ -e "$file" ] || continue
@@ -145,9 +155,9 @@ for file in /usr/local/etc/xray-bsbf-bonding/[0-9]*-*.json; do
     echo "$port $uuid $speed"
 done | sort -n
 EOF
-chmod +x /usr/local/sbin/bsbf-list-client
+chmod +x $LOCAL_SBIN/bsbf-list-client
 
-cat > /usr/local/sbin/bsbf-remove-client <<'EOF'
+cat > $LOCAL_SBIN/bsbf-remove-client <<'EOF'
 #!/bin/sh
 set -eu
 [ "$#" -gt 0 ] || exit 1
@@ -163,10 +173,10 @@ for input in "$@"; do
     done
 done
 EOF
-chmod +x /usr/local/sbin/bsbf-remove-client
+chmod +x $LOCAL_SBIN/bsbf-remove-client
 
 
-cat > /usr/local/sbin/bsbf-rate-limiting <<'EOF'
+cat > $LOCAL_SBIN/bsbf-rate-limiting <<'EOF'
 #!/bin/sh
 set -eu
 [ "$#" -eq 1 ] || exit 1
@@ -186,7 +196,7 @@ for file in /usr/local/etc/xray-bsbf-bonding/[0-9]*-*.json; do
     tc filter add dev "$iface" parent 1:0 handle 0x$outhex fw classid 1:$outhex 2>/dev/null || true
 done
 EOF
-chmod +x /usr/local/sbin/bsbf-rate-limiting
+chmod +x $LOCAL_SBIN/bsbf-rate-limiting
 
 echo "[4/6] Configuring MPTCP OpenRC service..."
 cat > /etc/init.d/bsbf-mptcp-configuration <<'EOF'
@@ -204,7 +214,7 @@ rc-update add bsbf-mptcp-configuration default
 rc-service bsbf-mptcp-configuration start
 
 echo "[5/6] Validating Xray and MPTCP..."
-xray version
+"$XRAY_BIN" version
 ip mptcp limits show
 rc-service bsbf-mptcp-configuration status
 
