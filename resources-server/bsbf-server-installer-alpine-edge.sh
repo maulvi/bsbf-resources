@@ -116,42 +116,82 @@ rc-update add xray-bsbf-$name default >/dev/null 2>&1 || true
 EOF
 chmod +x "$LOCAL_SBIN/bsbf-register-xray"
 
-cat > "$LOCAL_SBIN/bsbf-add-client" <<EOF
+cat > "$LOCAL_SBIN/bsbf-add-client" <<'EOF'
 #!/bin/sh
 set -eu
-XRAY_DIR=$XRAY_DIR
-LIMIT=$LIMIT
-speed="\$1"
+
+LOCAL_SBIN=/usr/local/sbin
+XRAY_DIR="__XRAY_DIR__"
+LIMIT=__LIMIT__
+
+[ "$#" -ge 1 ] && [ "$#" -le 2 ] || {
+    echo "Usage: bsbf-add-client <MBPS> [PORT]" >&2
+    exit 1
+}
+
+speed="$1"
+port="${2:-}"
 base=16384
-uuid=\$(xray uuid)
-id=\$base
-while find "\$XRAY_DIR" -maxdepth 1 -name "\$id-*.json" -print -quit | grep -q .; do id=\$((id + 1)); done
-[ "\$id" -lt \$((base + LIMIT)) ] || { echo "Client limit reached" >&2; exit 1; }
-port="\$id"
-outmark=\$((id + 16384))
-file="\$XRAY_DIR/\$port-\$uuid-\$speed.json"
-cat > "\$file" <<JSON
+
+case "$speed" in
+    ''|*[!0-9]*) echo "ERROR: speed must be numeric" >&2; exit 1 ;;
+esac
+
+if [ -n "$port" ]; then
+    case "$port" in
+        ''|*[!0-9]*) echo "ERROR: Invalid port: $port" >&2; exit 1 ;;
+    esac
+    [ "$port" -ge 1 ] && [ "$port" -le 49151 ] || {
+        echo "ERROR: Invalid port: $port (must be 1-49151)" >&2
+        exit 1
+    }
+    find "$XRAY_DIR" -maxdepth 1 -type f -name "$port-*.json" -print -quit | grep -q . && {
+        echo "ERROR: Port $port is already in use" >&2
+        exit 1
+    }
+    id="$port"
+else
+    id="$base"
+    while find "$XRAY_DIR" -maxdepth 1 -type f -name "$id-*.json" -print -quit | grep -q .; do
+        id=$((id + 1))
+    done
+    [ "$id" -lt $((base + LIMIT)) ] || {
+        echo "ERROR: Client limit reached" >&2
+        exit 1
+    }
+    port="$id"
+fi
+
+uuid=$(xray uuid)
+outmark=$((id + 16384))
+file="$XRAY_DIR/$port-$uuid-$speed.json"
+
+cat > "$file" <<JSON
 {
   "inbounds": [{
     "listen": "0.0.0.0",
-    "port": \$port,
+    "port": $port,
     "protocol": "vless",
-    "settings": {"clients": [{"id": "\$uuid"}], "decryption": "none"},
-    "streamSettings": {"sockopt": {"mark": \$id, "tcpMptcp": true}}
+    "settings": {"clients": [{"id": "$uuid"}], "decryption": "none"},
+    "streamSettings": {"sockopt": {"mark": $id, "tcpMptcp": true}}
   }],
   "outbounds": [{
     "protocol": "freedom",
-    "streamSettings": {"sockopt": {"mark": \$outmark}}
+    "streamSettings": {"sockopt": {"mark": $outmark}}
   }]
 }
 JSON
-name="\$port-\$uuid-\$speed"
-bsbf-register-xray "\$name"
-rc-service xray-bsbf-"\$name" start
-iface=\$(ip route show default | awk 'NR==1 {for(i=1;i<=NF;i++) if(\$i=="dev") print \$(i+1)}')
-[ -z "\$iface" ] || [ "\$speed" -eq 0 ] || bsbf-rate-limiting "\$iface" >/dev/null 2>&1 || true
-echo "\$port \$uuid"
+
+name="$port-$uuid-$speed"
+"$LOCAL_SBIN/bsbf-register-xray" "$name"
+rc-service xray-bsbf-"$name" start
+
+iface=$(ip route show default | awk 'NR==1 {for(i=1;i<=NF;i++) if($i=="dev") print $(i+1)}')
+[ -z "$iface" ] || [ "$speed" -eq 0 ] || "$LOCAL_SBIN/bsbf-rate-limiting" "$iface" >/dev/null 2>&1 || true
+
+echo "$port $uuid"
 EOF
+sed -i "s|__XRAY_DIR__|$XRAY_DIR|; s|__LIMIT__|$LIMIT|" "$LOCAL_SBIN/bsbf-add-client"
 chmod +x "$LOCAL_SBIN/bsbf-add-client"
 
 cat > $LOCAL_SBIN/bsbf-list-client <<'EOF'
@@ -230,7 +270,7 @@ rc-service bsbf-mptcp-configuration status
 
 echo "[6/6] Installation complete."
 echo
-echo "Add client:    bsbf-add-client 50"
+echo "Add client:    bsbf-add-client 50 [PORT]"
 echo "List clients:  bsbf-list-client"
 echo "Remove client: bsbf-remove-client <PORT|UUID>"
 echo
