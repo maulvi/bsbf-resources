@@ -85,27 +85,35 @@ cmd_list() {
 }
 
 cmd_add() {
-    [ "$#" -eq 4 ] || die "Usage: bsbf-server add <name> <server_ipv4> <port> <uuid>"
-    name="$1"; addr="$2"; port="$3"; id="$4"
-    valid_name "$name" || die "Invalid server name: use letters, numbers, ., _ or -"
-    echo "$port" | grep -Eq '^[0-9]+$' || die "Invalid port"
-    [ -n "$addr" ] || die "Server IPv4 is required"
-    [ -n "$id" ] || die "UUID is required"
+	[ "$#" -eq 4 ] || die "Usage: bsbf-server add <server_ipv4> <port> <uuid> <name>"
+	if echo "$1" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$'; then
+		addr="$1"; port="$2"; id="$3"; name="$4"
+	else
+		# Backward-compatible legacy order:
+		# bsbf-server add <name> <server_ipv4> <port> <uuid>
+		name="$1"; addr="$2"; port="$3"; id="$4"
+	fi
 
-    ensure_files
-    line="$(find_server "$name")"
-    if [ -n "$line" ]; then
-        awk -F '|' -v n="$name" -v a="$addr" -v p="$port" -v i="$id"             'BEGIN{OFS="|"} $1 == n {$2=a;$3=p;$4=i} {print}' "$CONFIG" > "$CONFIG.tmp"
-        mv "$CONFIG.tmp" "$CONFIG"
-        chmod 600 "$CONFIG"
-        echo "Updated server: $name"
-    else
-        printf '%s|%s|%s|%s\n' "$name" "$addr" "$port" "$id" >> "$CONFIG"
-        chmod 600 "$CONFIG"
-        echo "Added server: $name"
-    fi
+	valid_name "$name" || die "Invalid server name: use letters, numbers, ., _ or -"
+	echo "$port" | grep -Eq '^[0-9]+$' || die "Invalid port: $port (must be 1-65535)"
+	[ "$port" -ge 1 ] && [ "$port" -le 65535 ] || die "Invalid port: $port (must be 1-65535)"
+	[ -n "$addr" ] || die "Server IPv4 is required"
+	[ -n "$id" ] || die "UUID is required"
+
+	ensure_files
+	line="$(find_server "$name")"
+	if [ -n "$line" ]; then
+		awk -F '|' -v n="$name" -v a="$addr" -v p="$port" -v i="$id" \
+			'BEGIN{OFS="|"} $1 == n {$2=a;$3=p;$4=i} {print}' "$CONFIG" > "$CONFIG.tmp"
+		mv "$CONFIG.tmp" "$CONFIG"
+		chmod 600 "$CONFIG"
+		echo "Updated server: $name"
+	else
+		printf '%s|%s|%s|%s\n' "$name" "$addr" "$port" "$id" >> "$CONFIG"
+		chmod 600 "$CONFIG"
+		echo "Added server: $name"
+	fi
 }
-
 cmd_use() {
     [ "$#" -eq 1 ] || die "Usage: bsbf-server use <name>"
     ensure_files
@@ -143,21 +151,21 @@ EOF
 }
 
 usage() {
-    cat <<EOF
+	cat <<EOF
 Usage:
   bsbf-server list
-  bsbf-server add <name> <server_ipv4> <port> <uuid>
+  bsbf-server add <server_ipv4> <port> <uuid> <name>
+  bsbf-server add <name> <server_ipv4> <port> <uuid>  # legacy
   bsbf-server use <name>
   bsbf-server current
   bsbf-server remove <name>
 
 Examples:
+  bsbf-server add 139.99.123.120 5970 63887585-e050-41c5-bc16-063c504a2d58 tierhivesg
   bsbf-server add malaysia 87.76.160.204 16384 e7acba73-df53-40db-9400-65b2aa6304ff
-  bsbf-server add "contoh namaaa" 192.0.2.10 6701 00000000-0000-0000-0000-000000000000
-  bsbf-server use malaysia
+  bsbf-server use tierhivesg
 EOF
 }
-
 ensure_files
 
 case "${1:-}" in
