@@ -2,13 +2,53 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2025-2026 Chester A. Unal <chester.a.unal@arinc9.com>
 
-if [ $# -lt 1 ] || { [ -n "$2" ] && [ "$2" != "--overwrite" ]; }; then
-	echo "Usage: $0 <MBPS> [--overwrite]"
+if [ $# -lt 1 ] || [ $# -gt 3 ]; then
+	echo "Usage: $0 <MBPS> [PORT] [--overwrite]"
 	exit 1
 fi
 
 SPEED="$1"
-OVERWRITE="$2"
+PORT=""
+OVERWRITE=""
+shift
+
+while [ $# -gt 0 ]; do
+	case "$1" in
+	--overwrite)
+		[ -z "$OVERWRITE" ] || {
+			echo "ERROR: --overwrite specified more than once" >&2
+			exit 1
+		}
+		OVERWRITE="--overwrite"
+		;;
+	*[!0-9]*)
+		echo "ERROR: Invalid port: $1 (must be 1-49151)" >&2
+		exit 1
+		;;
+	*)
+		[ -z "$PORT" ] || {
+			echo "ERROR: Only one custom port may be specified" >&2
+			exit 1
+		}
+		PORT="$1"
+		;;
+	esac
+	shift
+done
+
+case "$SPEED" in
+	*[!0-9]*|"")
+		echo "ERROR: Invalid speed" >&2
+		exit 1
+		;;
+esac
+
+if [ -n "$PORT" ]; then
+	[ "$PORT" -ge 1 ] && [ "$PORT" -le 49151 ] || {
+		echo "ERROR: Invalid port: $PORT (must be 1-49151)" >&2
+		exit 1
+	}
+fi
 
 BASE_CLIENT_ID=16384
 CLIENT_LIMIT=16384
@@ -18,9 +58,17 @@ UUID=$(xray uuid)
 
 # Create xray configuration for client on server.
 CLIENT_ID=$BASE_CLIENT_ID
-while find /usr/local/etc/xray-bsbf-bonding -maxdepth 1 -type f -name "$CLIENT_ID-*.json" -print -quit | grep -q .; do
-	CLIENT_ID=$((CLIENT_ID + 1))
-done
+if [ -n "$PORT" ]; then
+	CLIENT_ID="$PORT"
+	if find /usr/local/etc/xray-bsbf-bonding -maxdepth 1 -type f -name "$CLIENT_ID-*.json" -print -quit | grep -q .; then
+		echo "ERROR: Port $PORT is already in use" >&2
+		exit 1
+	fi
+else
+	while find /usr/local/etc/xray-bsbf-bonding -maxdepth 1 -type f -name "$CLIENT_ID-*.json" -print -quit | grep -q .; do
+		CLIENT_ID=$((CLIENT_ID + 1))
+	done
+fi
 
 # When client limit is reached, exit if overwrite argument is not given. Use
 # greater than or equals to ensure the client limit excess is detected. Then,
@@ -31,10 +79,10 @@ if [ $CLIENT_ID -ge $((BASE_CLIENT_ID + CLIENT_LIMIT)) ]; then
 	CLIENT_ID=$BASE_CLIENT_ID
 fi
 # Empty the next slot if overwrite argument is given.
-[ -n "$OVERWRITE" ] && bsbf-remove-client $((CLIENT_ID + 1))
+[ -n "$OVERWRITE" ] && [ -z "$PORT" ] && bsbf-remove-client $((CLIENT_ID + 1))
 
 # Add client to server.
-PORT=$CLIENT_ID
+PORT=${PORT:-$CLIENT_ID}
 INBOUND_MARK=$CLIENT_ID
 OUTBOUND_MARK=$((CLIENT_ID + 16384))
 
