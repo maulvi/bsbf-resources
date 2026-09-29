@@ -68,9 +68,12 @@ export XRAY_BIN START_STOP_DAEMON
 curl -fsSL https://raw.githubusercontent.com/bondingshouldbefree/bsbf-resources/refs/heads/main/resources-server/core-config.json -o "$XRAY_DIR/core-config.json"
 chmod 600 "$XRAY_DIR/core-config.json"
 
-cat > $LOCAL_SBIN/bsbf-xray-client <<'EOF'
+cat > "$LOCAL_SBIN/bsbf-xray-client" <<'EOF'
 #!/bin/sh
 set -eu
+LOCAL_SBIN=/usr/local/sbin
+XRAY_BIN=$(command -v xray)
+START_STOP_DAEMON=$(command -v start-stop-daemon)
 action="$1"
 name="$2"
 base=/usr/local/etc/xray-bsbf-bonding
@@ -78,26 +81,32 @@ pid=/run/bsbf-xray-$name.pid
 case "$action" in
 start)
     if [ -f "$pid" ] && kill -0 "$(cat "$pid")" 2>/dev/null; then exit 0; fi
-    "$START_STOP_DAEMON" --start --background --make-pidfile --pidfile "$pid"         --exec "$XRAY_BIN" -- run -config "$base/core-config.json" -config "$base/$name.json"
+    "$START_STOP_DAEMON" --start --background --make-pidfile --pidfile "$pid" \
+        --exec "$XRAY_BIN" -- run -config "$base/core-config.json" -config "$base/$name.json"
     ;;
 stop)
     [ -f "$pid" ] && kill "$(cat "$pid")" 2>/dev/null || true
     rm -f "$pid"
     ;;
+*)
+    echo "Usage: $0 {start|stop} <client>" >&2
+    exit 1
+    ;;
 esac
 EOF
-chmod +x $LOCAL_SBIN/bsbf-xray-client
+chmod +x "$LOCAL_SBIN/bsbf-xray-client"
 
-cat > $LOCAL_SBIN/bsbf-register-xray <<'EOF'
+cat > "$LOCAL_SBIN/bsbf-register-xray" <<'EOF'
 #!/bin/sh
 set -eu
+LOCAL_SBIN=/usr/local/sbin
 name="$1"
 svc=/etc/init.d/xray-bsbf-$name
 cat > "$svc" <<EORC
 #!/sbin/openrc-run
-command="$LOCAL_SBIN/bsbf-xray-client"
+command="/usr/local/sbin/bsbf-xray-client"
 command_args="start $name"
-command_stop="$LOCAL_SBIN/bsbf-xray-client"
+command_stop="/usr/local/sbin/bsbf-xray-client"
 command_stop_args="stop $name"
 pidfile="/run/bsbf-xray-$name.pid"
 depend() { need net; }
@@ -105,7 +114,7 @@ EORC
 chmod +x "$svc"
 rc-update add xray-bsbf-$name default >/dev/null 2>&1 || true
 EOF
-chmod +x $LOCAL_SBIN/bsbf-register-xray
+chmod +x "$LOCAL_SBIN/bsbf-register-xray"
 
 cat > $LOCAL_SBIN/bsbf-add-client <<EOF
 #!/bin/sh
