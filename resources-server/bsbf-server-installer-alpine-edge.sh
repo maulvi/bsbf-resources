@@ -148,7 +148,7 @@ JSON
 name="\$port-\$uuid-\$speed"
 bsbf-register-xray "\$name"
 rc-service xray-bsbf-"\$name" start
-iface=\$(ip route show default | awk 'NR==1 {for(i=1;i<=NF;i++) if($i=="dev") print $(i+1)}')
+iface=\$(ip route show default | awk 'NR==1 {for(i=1;i<=NF;i++) if(\$i=="dev") print \$(i+1)}')
 [ -z "\$iface" ] || [ "\$speed" -eq 0 ] || bsbf-rate-limiting "\$iface" >/dev/null 2>&1 || true
 echo "\$port \$uuid"
 EOF
